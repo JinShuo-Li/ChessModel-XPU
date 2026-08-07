@@ -20,14 +20,16 @@ def build_engine(checkpoint, device_name, simulations, leaf_batch_size):
     return PUCTSearch(NeuralEvaluator(model, device), simulations, leaf_batch_size)
 
 
-def loop(search):
+def loop(search, input_stream=None, output_stream=None):
+    input_stream = input_stream or sys.stdin
+    output_stream = output_stream or sys.stdout
     board = chess.Board()
-    for raw in sys.stdin:
+    for raw in input_stream:
         parts = raw.strip().split()
         if not parts: continue
         command = parts[0]
-        if command == "uci": print("id name ChessModel-XPU\nid author JinShuo-Li\nuciok", flush=True)
-        elif command == "isready": print("readyok", flush=True)
+        if command == "uci": print("id name ChessModel-XPU\nid author JinShuo-Li\nuciok", file=output_stream, flush=True)
+        elif command == "isready": print("readyok", file=output_stream, flush=True)
         elif command == "ucinewgame": board = chess.Board()
         elif command == "position":
             if parts[1] == "startpos": board = chess.Board(); offset = 2
@@ -38,8 +40,8 @@ def loop(search):
                 for uci in parts[offset + 1:]: board.push_uci(uci)
         elif command == "go":
             result = search.search(board)
-            print(f"info nodes {result.simulations} time {int(result.elapsed_s*1000)} pv {' '.join(m.uci() for m in result.pv)}", flush=True)
-            print(f"bestmove {result.move.uci()}", flush=True)
+            print(f"info nodes {result.simulations} time {int(result.elapsed_s*1000)} pv {' '.join(m.uci() for m in result.pv)}", file=output_stream, flush=True)
+            print(f"bestmove {result.move.uci()}", file=output_stream, flush=True)
         elif command == "stop": pass
         elif command == "quit": break
 
@@ -50,4 +52,3 @@ def main():
 
 
 if __name__ == "__main__": main()
-

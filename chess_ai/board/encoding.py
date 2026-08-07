@@ -22,9 +22,9 @@ def _history_boards(board: chess.Board) -> list[chess.Board]:
     current = board.copy(stack=True)
     result = []
     for _ in range(HISTORY):
-        result.append(current.copy(stack=False))
+        result.append(current.copy(stack=True))
         if not current.move_stack:
-            continue
+            break
         current.pop()
     return result
 
@@ -76,4 +76,3 @@ def unpack_encoded(binary: np.ndarray, scalars: np.ndarray) -> np.ndarray:
     planes[110].fill(float(scalars[0]))
     planes[111].fill(float(scalars[1]))
     return planes
-

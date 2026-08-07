@@ -41,6 +41,20 @@ class PUCTSearch:
             value = -value
 
     @staticmethod
+    def _reserve(path):
+        # A reversible virtual win from each child's perspective makes that
+        # child temporarily unattractive to its parent (-child.q in selection).
+        for node in path:
+            node.visits += 1
+            node.value_sum += 1.0
+
+    @staticmethod
+    def _release(path):
+        for node in path:
+            node.visits -= 1
+            node.value_sum -= 1.0
+
+    @staticmethod
     def _expand(node, priors):
         if node.expanded:
             return
@@ -70,15 +84,14 @@ class PUCTSearch:
                 if terminal_value is not None:
                     terminal.append((path, terminal_value)); continue
                 if key in reserved:
-                    # A tiny virtual visit encourages a different branch.
-                    leaf.visits += 1; leaf.value_sum += 1.0
                     continue
-                reserved.add(key); pending.append((leaf, path))
+                reserved.add(key); self._reserve(path); pending.append((leaf, path))
             for path, terminal_value in terminal:
                 self._backup(path, terminal_value)
             if pending:
                 evaluations = self.evaluator.evaluate([leaf.board for leaf, _ in pending])
                 for (leaf, path), (priors, leaf_value, _) in zip(pending, evaluations):
+                    self._release(path)
                     self._expand(leaf, priors); self._backup(path, leaf_value)
             done = len(pending) + len(terminal)
             if done == 0:
@@ -94,4 +107,3 @@ class PUCTSearch:
         root_q = root.q
         root_wdl = np.array([max(root_q, 0), 1 - abs(root_q), max(-root_q, 0)], dtype=np.float32)
         return SearchResult(best.move, {move: child.visits for move, child in root.children.items()}, root_wdl, completed, time.perf_counter() - started, pv)
-

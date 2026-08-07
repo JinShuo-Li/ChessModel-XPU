@@ -21,3 +21,10 @@ def test_soft_policy_loss():
     loss = soft_cross_entropy(logits, target)
     assert loss.isfinite() and loss > 0
 
+
+def test_illegal_logits_do_not_change_policy_loss():
+    target = torch.tensor([[1.0, 0.0, 0.0]])
+    legal = torch.tensor([[True, True, False]])
+    low = soft_cross_entropy(torch.tensor([[1.0, 0.0, -100.0]]), target, legal)
+    high = soft_cross_entropy(torch.tensor([[1.0, 0.0, 1000.0]]), target, legal)
+    assert torch.allclose(low, high)

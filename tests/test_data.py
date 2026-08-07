@@ -15,5 +15,5 @@ def test_shard_and_dataset_roundtrip(tmp_path):
     dataset = TeacherDataset(tmp_path); item = dataset[0]
     assert item["position"].shape == (112, 8, 8)
     assert item["policy"].sum() == 1
+    assert item["legal_mask"].sum() == 20
     assert item["wdl"].shape == (3,)
-
