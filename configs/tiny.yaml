@@ -1,0 +1,8 @@
+seed: 7
+model: {blocks: 10, channels: 128, se: false, se_hidden: 32, moves_left: false}
+runtime: {device: xpu, precision: bf16, layout: contiguous, compile: false}
+training: {batch_size: 256, epochs: 10, learning_rate: 0.001, warmup_steps: 1000, weight_decay: 0.0001}
+loss: {policy: 1.0, value: 1.0, moves_left: 0.05}
+stockfish: {path: "", multipv: 8, nodes: 10000, threads: 8, hash_mb: 512, temperature: 0.15}
+search: {simulations: 400, leaf_batch_size: 64, cpuct: 1.5}
+

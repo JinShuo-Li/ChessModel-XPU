@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chessmodel-xpu"
+version = "0.1.0"
+description = "Compact policy/WDL neural chess engine for Intel XPU"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26,<3", "python-chess>=1.999", "PyYAML>=6.0", "tqdm>=4.66"]
+
+[tool.setuptools.packages.find]
+include = ["chess_ai*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra"
+pythonpath = ["."]

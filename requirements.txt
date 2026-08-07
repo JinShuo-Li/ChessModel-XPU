@@ -1,0 +1,7 @@
+numpy>=1.26,<3
+python-chess>=1.999
+PyYAML>=6.0
+tqdm>=4.66
+tensorboard>=2.16
+pytest>=8.0
+
