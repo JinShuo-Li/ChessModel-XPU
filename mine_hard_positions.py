@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -27,6 +28,7 @@ def main():
             offset += len(score)
     scored.sort(key=lambda row: row["score"], reverse=True)
     selected = scored[:args.top_k]
+    Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     with open(args.output, "w", encoding="utf-8") as handle: json.dump(selected, handle, indent=2)
     fen_output = args.output.rsplit(".", 1)[0] + ".fen"
     with open(fen_output, "w", encoding="utf-8") as handle: handle.write("\n".join(row["fen"] for row in selected) + "\n")

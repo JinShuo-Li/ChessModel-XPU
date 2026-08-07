@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--games", type=int, default=20); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64); parser.add_argument("--stockfish-nodes", type=int, default=10000); parser.add_argument("--pgn", default="matches.pgn")
     args = parser.parse_args()
     if args.games % 2: parser.error("--games must be even for paired colors")
+    Path(args.pgn).parent.mkdir(parents=True, exist_ok=True)
     ours = neural_player(build_engine(args.checkpoint, args.device, args.simulations, args.leaf_batch_size))
     sf = None
     if args.stockfish:
