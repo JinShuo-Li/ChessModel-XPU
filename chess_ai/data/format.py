@@ -57,16 +57,29 @@ def write_shard(path: str | Path, records: list[TeacherRecord], metadata: dict |
 def read_shard(path: str | Path) -> tuple[list[TeacherRecord], dict]:
     started = time.perf_counter()
     with np.load(path, allow_pickle=False) as data:
-        manifest = json.loads(str(data["manifest"]))
+        # NpzFile lazily decompresses an archive member on every __getitem__.
+        # Materialize each member once before iterating over records; indexing
+        # data["packed"] inside the loop otherwise re-reads the whole member for
+        # every position and amplifies a small shard into gigabytes of I/O.
+        manifest_payload = str(data["manifest"])
+        expected_checksum = str(data["checksum"])
+        packed = data["packed"]
+        scalars = data["scalars"]
+        move_ids = data["move_ids"]
+        move_probs = data["move_probs"]
+        wdl = data["wdl"]
+        cp = data["cp"]
+
+        manifest = json.loads(manifest_payload)
         if manifest["format_version"] != FORMAT_VERSION:
             raise ValueError(f"unsupported format version {manifest['format_version']}")
-        checksum = hashlib.sha256(data["packed"].tobytes() + data["move_ids"].tobytes() + str(data["manifest"]).encode()).hexdigest()
-        if checksum != str(data["checksum"]):
+        checksum = hashlib.sha256(packed.tobytes() + move_ids.tobytes() + manifest_payload.encode()).hexdigest()
+        if checksum != expected_checksum:
             raise ValueError("shard integrity check failed")
         records = []
         unpack_started = time.perf_counter()
         for i in range(manifest["count"]):
-            valid = data["move_ids"][i] >= 0
-            records.append(TeacherRecord(unpack_encoded(data["packed"][i], data["scalars"][i]), data["move_ids"][i][valid].astype(np.int64), data["move_probs"][i][valid].astype(np.float32), data["wdl"][i].astype(np.float32), float(data["cp"][i]), manifest["records"][i]))
+            valid = move_ids[i] >= 0
+            records.append(TeacherRecord(unpack_encoded(packed[i], scalars[i]), move_ids[i][valid].astype(np.int64), move_probs[i][valid].astype(np.float32), wdl[i].astype(np.float32), float(cp[i]), manifest["records"][i]))
         manifest["profile"] = {"total_read_s": time.perf_counter() - started, "bitplane_unpack_s": time.perf_counter() - unpack_started}
     return records, manifest
