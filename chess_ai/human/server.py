@@ -161,7 +161,7 @@ def create_server(session: GameSession, host: str, port: int) -> ThreadingHTTPSe
 def main() -> None:
     parser = argparse.ArgumentParser(description="Serve a local browser game backed by a selected checkpoint")
     parser.add_argument("--checkpoint", required=True)
-    parser.add_argument("--device", choices=("cpu", "xpu"), required=True)
+    parser.add_argument("--device", choices=("cpu", "cuda"), required=True)
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--simulations", type=int, default=400)

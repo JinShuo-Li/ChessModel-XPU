@@ -32,6 +32,6 @@ def load_checkpoint(path, model, optimizer=None, scheduler=None, map_location="c
     random.setstate(state["rng"]["python"])
     np.random.set_state(state["rng"]["numpy"])
     # The global default RNG is CPU-based even when checkpoint tensors were
-    # remapped directly to XPU for model/optimizer resume.
+    # remapped directly to CUDA for model/optimizer resume.
     torch.set_rng_state(state["rng"]["torch"].cpu())
     return state

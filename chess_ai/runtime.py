@@ -6,13 +6,13 @@ import torch
 
 
 def resolve_device(name: str) -> torch.device:
-    if name == "xpu":
-        if not hasattr(torch, "xpu") or not torch.xpu.is_available():
-            raise RuntimeError("XPU was explicitly requested but torch.xpu is unavailable")
-        return torch.device("xpu")
+    if name == "cuda":
+        if not hasattr(torch, "cuda") or not torch.cuda.is_available():
+            raise RuntimeError("CUDA was explicitly requested but torch.cuda is unavailable")
+        return torch.device("cuda")
     if name == "cpu":
         return torch.device("cpu")
-    raise ValueError("device must be explicitly 'cpu' or 'xpu'")
+    raise ValueError("device must be explicitly 'cpu' or 'cuda'")
 
 
 def autocast_context(device: torch.device, precision: str):
@@ -23,6 +23,6 @@ def autocast_context(device: torch.device, precision: str):
 
 
 def synchronize(device: torch.device) -> None:
-    if device.type == "xpu":
-        torch.xpu.synchronize(device)
+    if device.type == "cuda":
+        torch.cuda.synchronize(device)
 

@@ -12,7 +12,7 @@ from chess_ai.runtime import autocast_context, resolve_device, synchronize
 
 
 def bench(config, batch, steps, precision, layout, compile_model):
-    cfg = load_config(config); device = resolve_device("xpu")
+    cfg = load_config(config); device = resolve_device("cuda")
     model = ChessNetwork(**cfg["model"]).to(device); model.train()
     if layout == "channels_last": model = model.to(memory_format=torch.channels_last)
     if compile_model: model = torch.compile(model)
@@ -36,7 +36,7 @@ def bench(config, batch, steps, precision, layout, compile_model):
             loss.backward(); optimizer.step()
         synchronize(device); train_s = time.perf_counter() - started
         memory = None
-        if hasattr(torch.xpu, "memory_allocated"): memory = torch.xpu.memory_allocated() / 2**20
+        if hasattr(torch.cuda, "memory_allocated"): memory = torch.cuda.memory_allocated() / 2**20
         return {"status": "ok", "batch": batch, "parameters": count_parameters(model), "precision": precision, "layout": layout, "compile": compile_model, "forward_positions_s": batch * steps / forward_s, "training_positions_s": batch * steps / train_s, "step_latency_ms": train_s * 1000 / steps, "memory_mib": memory}
     except RuntimeError as error:
         if "memory" in str(error).lower() or "alloc" in str(error).lower():

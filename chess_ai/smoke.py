@@ -25,10 +25,10 @@ from chess_ai.uci.engine import loop as uci_loop
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Bounded end-to-end Intel XPU smoke pipeline")
+    parser = argparse.ArgumentParser(description="Bounded end-to-end NVIDIA CUDA smoke pipeline")
     parser.add_argument("--stockfish", required=True); parser.add_argument("--workdir", required=True); parser.add_argument("--config", default="configs/smoke.yaml")
     args = parser.parse_args(); cfg = load_config(args.config); root = Path(args.workdir); data_root = root / "data"; checkpoint = root / "smoke.pt"
-    diagnostic("xpu"); device = resolve_device("xpu"); torch.manual_seed(cfg["seed"])
+    diagnostic("cuda"); device = resolve_device("cuda"); torch.manual_seed(cfg["seed"])
     sf = cfg["stockfish"]
     with StockfishTeacher(args.stockfish, threads=sf["threads"], hash_mb=sf["hash_mb"], multipv=2, nodes=100, temperature=sf["temperature"]) as teacher:
         generation = generate(random_positions(16, cfg["seed"]), teacher, data_root, shard_size=16, metadata={"purpose": "smoke"})

@@ -8,15 +8,14 @@ from chess_ai.model import ChessNetwork
 from chess_ai.runtime import resolve_device
 
 
-def run(device_name="xpu"):
+def run(device_name="cuda"):
     print("PyTorch:", torch.__version__)
-    print("PyTorch XPU build:", hasattr(torch, "xpu"))
-    available = hasattr(torch, "xpu") and torch.xpu.is_available()
-    print("XPU available:", available)
-    if device_name == "xpu":
-        device = resolve_device("xpu")
-        print("XPU count:", torch.xpu.device_count())
-        print("XPU device:", torch.xpu.get_device_name(0))
+    print("PyTorch CUDA build:", torch.version.cuda or "none")
+    print("CUDA available:", torch.cuda.is_available())
+    if device_name == "cuda":
+        device = resolve_device("cuda")
+        print("CUDA device count:", torch.cuda.device_count())
+        print("CUDA device:", torch.cuda.get_device_name(0))
     else:
         device = resolve_device("cpu")
     tensor = torch.arange(16, dtype=torch.float32, device=device).reshape(4, 4)
@@ -29,7 +28,7 @@ def run(device_name="xpu"):
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--device", choices=("cpu", "xpu"), default="xpu"); args = parser.parse_args(); run(args.device)
+    parser = argparse.ArgumentParser(); parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda"); args = parser.parse_args(); run(args.device)
 
 
 if __name__ == "__main__": main()

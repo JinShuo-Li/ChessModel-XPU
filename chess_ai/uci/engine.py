@@ -47,7 +47,7 @@ def loop(search, input_stream=None, output_stream=None):
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--device", choices=("cpu", "xpu"), default="xpu"); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64)
+    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--device", choices=("cpu", "cuda"), default="cuda"); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64)
     args = parser.parse_args(); loop(build_engine(args.checkpoint, args.device, args.simulations, args.leaf_batch_size))
 
 
