@@ -16,7 +16,7 @@ from chess_ai.training.trainer import Trainer, cosine_schedule
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--config", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--resume"); parser.add_argument("--output", default="checkpoints/latest.pt"); parser.add_argument("--max-steps", type=int); parser.add_argument("--logdir")
+    parser = argparse.ArgumentParser(); parser.add_argument("--config", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--device", choices=("cpu", "cuda"), required=True); parser.add_argument("--resume"); parser.add_argument("--output", default="checkpoints/latest.pt"); parser.add_argument("--max-steps", type=int); parser.add_argument("--logdir")
     args = parser.parse_args(); cfg = load_config(args.config); device = resolve_device(args.device)
     dataset = TeacherDataset(args.dataset); training = cfg["training"]; loader = DataLoader(dataset, batch_size=training["batch_size"], shuffle=True, num_workers=0)
     model = ChessNetwork(**cfg["model"]).to(device); optimizer = torch.optim.AdamW(model.parameters(), lr=training["learning_rate"], weight_decay=training["weight_decay"])

@@ -18,7 +18,7 @@ from chess_ai.training.checkpoint import load_checkpoint
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--output", required=True); parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--games", type=int, default=1); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64); parser.add_argument("--temperature", type=float, default=1.0); parser.add_argument("--max-plies", type=int, default=300)
+    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--output", required=True); parser.add_argument("--device", choices=("cpu", "cuda"), required=True); parser.add_argument("--games", type=int, default=1); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64); parser.add_argument("--temperature", type=float, default=1.0); parser.add_argument("--max-plies", type=int, default=300)
     args = parser.parse_args(); state = torch.load(args.checkpoint, map_location="cpu", weights_only=False); model = ChessNetwork(**state["architecture"]); load_checkpoint(args.checkpoint, model); device = resolve_device(args.device); model.to(device); search = PUCTSearch(NeuralEvaluator(model, device), args.simulations, args.leaf_batch_size)
     records = []
     for game_id in range(args.games):

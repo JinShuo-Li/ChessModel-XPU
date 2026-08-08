@@ -19,7 +19,7 @@ def neural_player(search):
 def main():
     parser = argparse.ArgumentParser(description="Paired-color neural engine matches")
     parser.add_argument("--checkpoint", required=True); group = parser.add_mutually_exclusive_group(required=True); group.add_argument("--opponent-checkpoint"); group.add_argument("--stockfish")
-    parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--games", type=int, default=20); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64); parser.add_argument("--stockfish-nodes", type=int, default=10000); parser.add_argument("--pgn", default="matches.pgn")
+    parser.add_argument("--device", choices=("cpu", "cuda"), required=True); parser.add_argument("--games", type=int, default=20); parser.add_argument("--simulations", type=int, default=400); parser.add_argument("--leaf-batch-size", type=int, default=64); parser.add_argument("--stockfish-nodes", type=int, default=10000); parser.add_argument("--pgn", default="matches.pgn")
     args = parser.parse_args()
     if args.games % 2: parser.error("--games must be even for paired colors")
     Path(args.pgn).parent.mkdir(parents=True, exist_ok=True)

@@ -15,7 +15,7 @@ from chess_ai.training.checkpoint import load_checkpoint
 
 
 def main():
-    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--output", required=True); parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--top-k", type=int, default=10000); parser.add_argument("--batch-size", type=int, default=256)
+    parser = argparse.ArgumentParser(); parser.add_argument("--checkpoint", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--output", required=True); parser.add_argument("--device", choices=("cpu", "cuda"), required=True); parser.add_argument("--top-k", type=int, default=10000); parser.add_argument("--batch-size", type=int, default=256)
     args = parser.parse_args(); state = torch.load(args.checkpoint, map_location="cpu", weights_only=False); model = ChessNetwork(**state["architecture"]); load_checkpoint(args.checkpoint, model); device = resolve_device(args.device); model.to(device).eval(); dataset = TeacherDataset(args.dataset)
     scored, offset = [], 0
     with torch.inference_mode():

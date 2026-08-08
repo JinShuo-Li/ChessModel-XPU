@@ -14,7 +14,7 @@ from chess_ai.training.checkpoint import load_checkpoint
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate neural metrics on teacher shards"); parser.add_argument("--checkpoint", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--device", choices=("cpu", "xpu"), required=True); parser.add_argument("--batch-size", type=int, default=256)
+    parser = argparse.ArgumentParser(description="Validate neural metrics on teacher shards"); parser.add_argument("--checkpoint", required=True); parser.add_argument("--dataset", required=True); parser.add_argument("--device", choices=("cpu", "cuda"), required=True); parser.add_argument("--batch-size", type=int, default=256)
     args = parser.parse_args(); state = torch.load(args.checkpoint, map_location="cpu", weights_only=False); model = ChessNetwork(**state["architecture"]); load_checkpoint(args.checkpoint, model); device = resolve_device(args.device); model.to(device)
     metrics = neural_metrics(model, DataLoader(TeacherDataset(args.dataset), batch_size=args.batch_size), device); print(json.dumps(metrics, indent=2))
 
