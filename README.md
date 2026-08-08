@@ -161,6 +161,8 @@ For rigorous validation, divide PGNs into train/validation files by game before 
 
 First benchmark, edit `training.batch_size` in a copied config if necessary, then:
 
+For the one-million-position formal run, place game-level-disjoint PGNs at `datasets\formal_train.pgn` and `datasets\formal_validation.pgn`, then run `scripts\generate_formal_1m.ps1`. It refuses existing output directories, produces 245 training shards plus 13 validation shards using `configs\formal_1m.yaml`, and verifies every checksum plus the exact record totals. `TeacherDataset` retains bit-packed boards and sparse targets in memory and decodes only requested samples, so the million-position dataset does not expand into tens of gigabytes of resident float32 boards.
+
 ```powershell
 python train.py `
     --config configs\main_xpu.yaml `

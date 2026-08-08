@@ -24,7 +24,7 @@ def main():
             kl = (target_p * (target_p.clamp_min(1e-9).log() - pred_p.clamp_min(1e-9).log())).sum(1); value_error = (target_v - pred_v).abs().sum(1); entropy = -(pred_p * pred_p.clamp_min(1e-9).log()).sum(1); disagreement = (pred_p.argmax(1) != target_p.argmax(1)).float()
             score = kl + value_error + 0.05 * entropy + disagreement
             for i, (s, k, v, e, d) in enumerate(zip(score, kl, value_error, entropy, disagreement)):
-                scored.append({"index": offset + i, "fen": dataset.records[offset + i].metadata["fen"], "score": float(s.cpu()), "policy_kl": float(k.cpu()), "wdl_l1": float(v.cpu()), "entropy": float(e.cpu()), "top1_disagreement": bool(d.cpu())})
+                scored.append({"index": offset + i, "fen": dataset.metadata(offset + i)["fen"], "score": float(s.cpu()), "policy_kl": float(k.cpu()), "wdl_l1": float(v.cpu()), "entropy": float(e.cpu()), "top1_disagreement": bool(d.cpu())})
             offset += len(score)
     scored.sort(key=lambda row: row["score"], reverse=True)
     selected = scored[:args.top_k]

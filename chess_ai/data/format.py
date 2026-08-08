@@ -24,6 +24,35 @@ class TeacherRecord:
     metadata: dict = field(default_factory=dict)
 
 
+@dataclass
+class PackedShard:
+    packed: np.ndarray
+    scalars: np.ndarray
+    move_ids: np.ndarray
+    move_probs: np.ndarray
+    wdl: np.ndarray
+    cp: np.ndarray
+    manifest: dict
+
+    def __len__(self) -> int:
+        return self.manifest["count"]
+
+    @property
+    def storage_nbytes(self) -> int:
+        return sum(array.nbytes for array in (self.packed, self.scalars, self.move_ids, self.move_probs, self.wdl, self.cp))
+
+    def record(self, index: int) -> TeacherRecord:
+        valid = self.move_ids[index] >= 0
+        return TeacherRecord(
+            unpack_encoded(self.packed[index], self.scalars[index]),
+            self.move_ids[index][valid].astype(np.int64),
+            self.move_probs[index][valid].astype(np.float32),
+            self.wdl[index].astype(np.float32),
+            float(self.cp[index]),
+            self.manifest["records"][index],
+        )
+
+
 def write_shard(path: str | Path, records: list[TeacherRecord], metadata: dict | None = None) -> Path:
     if not records:
         raise ValueError("cannot write an empty shard")
@@ -54,7 +83,7 @@ def write_shard(path: str | Path, records: list[TeacherRecord], metadata: dict |
     return path
 
 
-def read_shard(path: str | Path) -> tuple[list[TeacherRecord], dict]:
+def read_packed_shard(path: str | Path) -> PackedShard:
     started = time.perf_counter()
     with np.load(path, allow_pickle=False) as data:
         # NpzFile lazily decompresses an archive member on every __getitem__.
@@ -76,10 +105,14 @@ def read_shard(path: str | Path) -> tuple[list[TeacherRecord], dict]:
         checksum = hashlib.sha256(packed.tobytes() + move_ids.tobytes() + manifest_payload.encode()).hexdigest()
         if checksum != expected_checksum:
             raise ValueError("shard integrity check failed")
-        records = []
-        unpack_started = time.perf_counter()
-        for i in range(manifest["count"]):
-            valid = move_ids[i] >= 0
-            records.append(TeacherRecord(unpack_encoded(packed[i], scalars[i]), move_ids[i][valid].astype(np.int64), move_probs[i][valid].astype(np.float32), wdl[i].astype(np.float32), float(cp[i]), manifest["records"][i]))
-        manifest["profile"] = {"total_read_s": time.perf_counter() - started, "bitplane_unpack_s": time.perf_counter() - unpack_started}
-    return records, manifest
+    manifest["profile"] = {"total_read_s": time.perf_counter() - started, "bitplane_unpack_s": 0.0}
+    return PackedShard(packed, scalars, move_ids, move_probs, wdl, cp, manifest)
+
+
+def read_shard(path: str | Path) -> tuple[list[TeacherRecord], dict]:
+    started = time.perf_counter()
+    shard = read_packed_shard(path)
+    unpack_started = time.perf_counter()
+    records = [shard.record(i) for i in range(len(shard))]
+    shard.manifest["profile"] = {"total_read_s": time.perf_counter() - started, "bitplane_unpack_s": time.perf_counter() - unpack_started}
+    return records, shard.manifest

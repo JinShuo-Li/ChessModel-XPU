@@ -46,3 +46,27 @@ def test_read_shard_materializes_each_npz_member_once(tmp_path, monkeypatch):
 
     assert len(loaded) == 1
     assert accesses == {key: 1 for key in ("manifest", "checksum", "packed", "scalars", "move_ids", "move_probs", "wdl", "cp")}
+
+
+def test_teacher_dataset_keeps_records_packed_until_access(tmp_path, monkeypatch):
+    board = chess.Board(); move = chess.Move.from_uci("e2e4")
+    records = [TeacherRecord(encode_board(board), np.array([move_to_index(board, move)]), np.array([1.0]), np.array([0.25, 0.5, 0.25]), 22.0, {"fen": board.fen()}) for _ in range(4)]
+    write_shard(tmp_path / "shard-00000.npz", records)
+    real_unpack = data_format.unpack_encoded
+    unpack_calls = 0
+
+    def counted_unpack(*args, **kwargs):
+        nonlocal unpack_calls
+        unpack_calls += 1
+        return real_unpack(*args, **kwargs)
+
+    monkeypatch.setattr(data_format, "unpack_encoded", counted_unpack)
+    dataset = TeacherDataset(tmp_path)
+    assert unpack_calls == 0
+    assert dataset.storage_nbytes < len(dataset) * 2048
+    assert dataset.metadata(-1)["fen"] == board.fen()
+    assert unpack_calls == 0
+    np.testing.assert_allclose(dataset[0]["position"].numpy(), records[0].encoded, atol=3e-4)
+    assert unpack_calls == 1
+    assert dataset.records[-1].metadata["fen"] == board.fen()
+    assert unpack_calls == 2
