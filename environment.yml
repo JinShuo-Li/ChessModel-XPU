@@ -5,6 +5,6 @@ dependencies:
   - python=3.11
   - pip
   - pip:
-      # Install torch separately from https://download.pytorch.org/whl/xpu.
+      # Install torch separately from https://download.pytorch.org/whl/cu126.
       - -r requirements.txt
 

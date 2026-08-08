@@ -1,6 +1,6 @@
 seed: 7
 model: {blocks: 2, channels: 32, se: false, se_hidden: 8, moves_left: false}
-runtime: {device: xpu, precision: bf16, layout: contiguous, compile: false}
+runtime: {device: cuda, precision: bf16, layout: contiguous, compile: false}
 training: {batch_size: 8, epochs: 1, steps: 4, learning_rate: 0.001, warmup_steps: 1, weight_decay: 0.0001}
 loss: {policy: 1.0, value: 1.0, moves_left: 0.05}
 stockfish: {path: "", multipv: 2, nodes: 100, threads: 1, hash_mb: 16, temperature: 0.15}
