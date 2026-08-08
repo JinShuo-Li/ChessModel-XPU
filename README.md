@@ -130,7 +130,13 @@ OOM is reported and stops larger batches gracefully. Output includes forward/tra
 
 ## Teacher datasets
 
-Formal broad randomized generation (documented only—do not launch until ready):
+Stockfish labeling and neural-network training are separate, sequential stages. The
+generator first writes complete, checksummed `.npz` shards; `train.py` subsequently
+loads those immutable shards. It does not train one position as soon as Stockfish
+produces it, and the formal workflow does not require the generator and trainer to
+run at the same time.
+
+Formal broad randomized generation:
 
 ```powershell
 python generate_teacher_data.py `
@@ -155,21 +161,96 @@ python generate_teacher_data.py `
     --pgn datasets\games.pgn
 ```
 
-For rigorous validation, divide PGNs into train/validation files by game before generation. FEN sources use `--fen-file positions.fen`. MultiPV expected WDL quality `P(win)-P(loss)` is converted to a soft target with configured temperature (initially 0.15); mate scores are mapped explicitly through a large mate score when retaining centipawns.
+PGNs supply realistic positions and game histories; their game results are not used
+as the policy/WDL labels. Stockfish 18 analyzes each sampled position and supplies
+the actual MultiPV policy and WDL targets. The sampler skips the first five plies and
+then takes every eighth eligible ply to reduce adjacent-position correlation.
 
-## Formal supervised training
+For rigorous validation, divide PGNs into train/validation files by game before
+generation. Never randomly split positions from the same game across datasets. FEN
+sources use `--fen-file positions.fen`. MultiPV expected WDL quality
+`P(win)-P(loss)` is converted to a soft target with configured temperature (0.15 in
+the formal config); mate scores are mapped explicitly through a large mate score
+when retaining centipawns.
 
-First benchmark, edit `training.batch_size` in a copied config if necessary, then:
+## One-million-position formal workflow
 
-For the one-million-position formal run, place game-level-disjoint PGNs at `datasets\formal_train.pgn` and `datasets\formal_validation.pgn`, then run `scripts\generate_formal_1m.ps1`. It refuses existing output directories, produces 245 training shards plus 13 validation shards using `configs\formal_1m.yaml`, and verifies every checksum plus the exact record totals. `TeacherDataset` retains bit-packed boards and sparse targets in memory and decodes only requested samples, so the million-position dataset does not expand into tens of gigabytes of resident float32 boards.
+Run these stages in order. Dataset production is CPU/Stockfish and disk-I/O work;
+model training begins only after both datasets pass verification.
+
+### 1. Prepare game-level-disjoint PGNs
+
+Download a reasonably sized, high-quality standard-chess PGN into the ignored
+`datasets\source` directory. The preparation script removes parse failures,
+non-standard starting positions, games without a decisive/draw result, short games,
+and duplicate move sequences. It then makes a deterministic game-level 90/10 split
+and refuses to publish outputs unless both sides contain enough sampleable positions:
+
+```powershell
+conda run -n chessmodel python scripts\prepare_formal_pgn.py `
+    --input datasets\source\high_quality_games.pgn `
+    --train-output datasets\formal_train.pgn `
+    --validation-output datasets\formal_validation.pgn `
+    --validation-percent 10 `
+    --seed 7 `
+    --required-train-positions 1000000 `
+    --required-validation-positions 50000 `
+    --metadata-output datasets\formal_pgn_metadata.json
+```
+
+The script writes through temporary files and refuses to overwrite an existing
+split. Preserve the generated metadata JSON and source hash locally for provenance.
+PGNs and metadata under `datasets` are intentionally not versioned.
+
+### 2. Generate and verify Stockfish labels
+
+Confirm the Stockfish path, then run:
+
+```powershell
+.\scripts\generate_formal_1m.ps1 `
+    -Stockfish ".\tools\stockfish\unpacked\stockfish\stockfish-windows-x86-64-avx2.exe"
+```
+
+Defaults are 1,000,000 training positions, 50,000 validation positions, 10,000
+Stockfish nodes, MultiPV 8, and 4,096 records per shard. This produces 245 training
+shards under `data\formal_1m_train` and 13 validation shards under
+`data\formal_50k_validation`. The script refuses existing output directories,
+requires distinct train/validation PGNs, and verifies every checksum and the exact
+shard and record totals before reporting success.
+
+To recheck completed data independently:
+
+```powershell
+conda run -n chessmodel python scripts\verify_teacher_dataset.py `
+    --dataset data\formal_1m_train `
+    --expected-positions 1000000 `
+    --expected-shards 245
+
+conda run -n chessmodel python scripts\verify_teacher_dataset.py `
+    --dataset data\formal_50k_validation `
+    --expected-positions 50000 `
+    --expected-shards 13
+```
+
+`TeacherDataset` loads each shard's bit-packed boards and sparse targets once, keeps
+that compact representation in memory, and decodes only requested samples. The
+million-position dataset therefore avoids expanding all boards into resident
+float32 tensors. Opening shards is disk-I/O-heavy; steady-state forward/backward
+training is primarily XPU-heavy.
+
+### 3. Benchmark and train
+
+Benchmark first. If batch 512 is unsuitable on the target machine, copy
+`configs\formal_1m.yaml` and change only the tested batch size. Start formal training
+only after the verification commands above succeed:
 
 ```powershell
 python train.py `
-    --config configs\main_xpu.yaml `
-    --dataset data\teacher_main `
+    --config configs\formal_1m.yaml `
+    --dataset data\formal_1m_train `
     --device xpu `
-    --output checkpoints\main_latest.pt `
-    --logdir runs\main
+    --output checkpoints\formal_1m_latest.pt `
+    --logdir runs\formal_1m
 ```
 
 Loss is soft-target policy cross entropy plus WDL cross entropy and optional Huber moves-left loss, with configurable weights. AdamW uses warmup plus cosine decay and `1e-4` default weight decay. BF16 XPU autocast is the default main preset.
@@ -180,16 +261,29 @@ Monitor:
 tensorboard --logdir runs
 ```
 
-Resume model, optimizer, scheduler, step/epoch, CPU RNG states, config, architecture metadata, and recorded Git commit:
+### 4. Validate and resume safely
+
+Evaluate against the game-disjoint validation set:
+
+```powershell
+python evaluate.py `
+    --checkpoint checkpoints\formal_1m_latest.pt `
+    --dataset data\formal_50k_validation `
+    --device xpu `
+    --batch-size 512
+```
+
+Resume model, optimizer, scheduler, step/epoch, CPU RNG states, config, architecture
+metadata, and recorded Git commit:
 
 ```powershell
 python train.py `
-    --config configs\main_xpu.yaml `
-    --dataset data\teacher_main `
+    --config configs\formal_1m.yaml `
+    --dataset data\formal_1m_train `
     --device xpu `
-    --resume checkpoints\main_latest.pt `
-    --output checkpoints\main_latest.pt `
-    --logdir runs\main
+    --resume checkpoints\formal_1m_latest.pt `
+    --output checkpoints\formal_1m_latest.pt `
+    --logdir runs\formal_1m
 ```
 
 ## Validation and engine matches
