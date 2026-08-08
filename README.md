@@ -177,6 +177,8 @@ when retaining centipawns.
 
 Run these stages in order. Dataset production is CPU/Stockfish and disk-I/O work;
 model training begins only after both datasets pass verification.
+For copy-ready, single-line PowerShell commands covering generation through human
+play, use [`INSTRUCTIONS.md`](INSTRUCTIONS.md).
 
 ### 1. Prepare game-level-disjoint PGNs
 
