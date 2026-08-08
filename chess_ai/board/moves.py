@@ -16,9 +16,7 @@ def _canonical(square: int, turn: chess.Color) -> int:
     return square if turn == chess.WHITE else chess.square_mirror(square)
 
 
-def move_to_index(board: chess.Board, move: chess.Move) -> int:
-    if move not in board.legal_moves:
-        raise ValueError(f"illegal move for position: {move.uci()}")
+def _move_to_index_unchecked(board: chess.Board, move: chess.Move) -> int:
     src, dst = _canonical(move.from_square, board.turn), _canonical(move.to_square, board.turn)
     sf, sr, df, dr = chess.square_file(src), chess.square_rank(src), chess.square_file(dst), chess.square_rank(dst)
     dx, dy = df - sf, dr - sr
@@ -37,6 +35,19 @@ def move_to_index(board: chess.Board, move: chess.Move) -> int:
         unit = (0 if dx == 0 else dx // abs(dx), 0 if dy == 0 else dy // abs(dy))
         plane = _QUEEN_DIRS.index(unit) * 7 + distance - 1
     return src * POLICY_PLANES + plane
+
+
+def move_to_index(board: chess.Board, move: chess.Move) -> int:
+    if move not in board.legal_moves:
+        raise ValueError(f"illegal move for position: {move.uci()}")
+    return _move_to_index_unchecked(board, move)
+
+
+def legal_moves_and_indices(board: chess.Board) -> tuple[list[chess.Move], np.ndarray]:
+    """Enumerate legal moves once and encode them without redundant validation."""
+    moves = list(board.legal_moves)
+    indices = np.fromiter((_move_to_index_unchecked(board, move) for move in moves), dtype=np.int64, count=len(moves))
+    return moves, indices
 
 
 def index_to_move(board: chess.Board, index: int) -> chess.Move:
@@ -71,7 +82,6 @@ def index_to_move(board: chess.Board, index: int) -> chess.Move:
 
 def legal_move_mask(board: chess.Board) -> np.ndarray:
     mask = np.zeros(POLICY_SIZE, dtype=np.bool_)
-    for move in board.legal_moves:
-        mask[move_to_index(board, move)] = True
+    _, indices = legal_moves_and_indices(board)
+    mask[indices] = True
     return mask
-

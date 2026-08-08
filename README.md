@@ -285,6 +285,20 @@ python -m chess_ai.uci.engine `
     --leaf-batch-size 64
 ```
 
+Serve a local browser game using an explicit checkpoint and TCP port:
+
+```powershell
+python serve.py `
+    --checkpoint checkpoints\formal_tiny_latest.pt `
+    --device xpu `
+    --host 127.0.0.1 `
+    --port 8765 `
+    --simulations 400 `
+    --leaf-batch-size 64
+```
+
+Open `http://127.0.0.1:8765` and choose a color. The same server exposes JSON endpoints `GET /api/state`, `POST /api/new` with `{"human_color":"white|black"}`, and `POST /api/move` with `{"move":"e2e4"}`. It binds to localhost by default; do not expose it to an untrusted network because it has no authentication.
+
 Implemented commands are `uci`, `isready`, `ucinewgame`, `position startpos|fen ... [moves ...]`, `go`, `stop`, and `quit`. Search info includes nodes, time, and principal variation.
 
 ## Profiling

@@ -59,8 +59,7 @@ class PUCTSearch:
         if node.expanded:
             return
         for move, prior in priors.items():
-            board = node.board.copy(stack=True); board.push(move)
-            node.children[move] = Node(board, prior, move, node)
+            node.children[move] = Node(None, prior, move, node)
         node.expanded = True
 
     def search(self, board: chess.Board):
@@ -89,7 +88,7 @@ class PUCTSearch:
             for path, terminal_value in terminal:
                 self._backup(path, terminal_value)
             if pending:
-                evaluations = self.evaluator.evaluate([leaf.board for leaf, _ in pending])
+                evaluations = self.evaluator.evaluate([leaf.materialize_board() for leaf, _ in pending])
                 for (leaf, path), (priors, leaf_value, _) in zip(pending, evaluations):
                     self._release(path)
                     self._expand(leaf, priors); self._backup(path, leaf_value)

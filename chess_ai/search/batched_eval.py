@@ -6,7 +6,7 @@ import numpy as np
 import torch
 
 from chess_ai.board.encoding import encode_board
-from chess_ai.board.moves import legal_move_mask, move_to_index
+from chess_ai.board.moves import legal_moves_and_indices
 from chess_ai.runtime import autocast_context
 
 
@@ -26,14 +26,15 @@ class NeuralEvaluator:
         wdls = torch.softmax(outputs["wdl"].float(), dim=1).cpu().numpy()
         results = []
         for board, logits, wdl in zip(boards, policies, wdls):
-            mask = legal_move_mask(board)
-            legal_logits = logits[mask]
+            moves, ids = legal_moves_and_indices(board)
+            order = np.argsort(ids, kind="stable")
+            ids = ids[order]
+            moves = [moves[i] for i in order]
+            legal_logits = logits[ids]
             legal_logits -= legal_logits.max(initial=0.0)
             probs = np.exp(legal_logits); probs /= probs.sum()
-            ids = np.flatnonzero(mask)
-            priors = {move: float(prob) for move, prob in zip((next(m for m in board.legal_moves if move_to_index(board, m) == i) for i in ids), probs)}
+            priors = {move: float(prob) for move, prob in zip(moves, probs)}
             results.append((priors, float(wdl[0] - wdl[2]), wdl))
         elapsed = time.perf_counter() - start
         self.timings["calls"] += 1; self.timings["positions"] += len(boards); self.timings["inference_s"] += elapsed
         return results
-

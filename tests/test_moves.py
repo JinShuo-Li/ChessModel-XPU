@@ -2,11 +2,14 @@ import random
 
 import chess
 
-from chess_ai.board.moves import POLICY_SIZE, index_to_move, legal_move_mask, move_to_index
+from chess_ai.board.moves import POLICY_SIZE, index_to_move, legal_move_mask, legal_moves_and_indices, move_to_index
 
 
 def assert_roundtrip(board):
     legal = list(board.legal_moves); ids = [move_to_index(board, move) for move in legal]
+    fast_moves, fast_ids = legal_moves_and_indices(board)
+    assert fast_moves == legal
+    assert fast_ids.tolist() == ids
     assert len(ids) == len(set(ids))
     assert all(0 <= index < POLICY_SIZE for index in ids)
     assert {index_to_move(board, index) for index in ids} == set(legal)
