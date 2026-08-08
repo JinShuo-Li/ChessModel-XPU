@@ -1,6 +1,6 @@
 # ChessModel-XPU
 
-ChessModel-XPU is a Windows-native neural chess engine optimized for Intel Arc XPU. It distills Stockfish 18 MultiPV/WDL analysis into a compact policy/WDL residual network and uses that network with chess rules and batched PUCT at inference. Stockfish is a teacher and evaluation opponent only; the playable/UCI engine never invokes it.
+ChessModel-XPU is a Linux-native neural chess engine optimized for NVIDIA CUDA GPUs. It distills Stockfish 18 MultiPV/WDL analysis into a compact policy/WDL residual network and uses that network with chess rules and batched PUCT at inference. Stockfish is a teacher and evaluation opponent only; the playable/UCI engine never invokes it.
 
 The research objective is strength per unit compute, not parameter count:
 
@@ -14,9 +14,9 @@ No pretrained strong model or dataset is included. Smoke checkpoints are disposa
 
 ## Platform
 
-This repository targets native Windows 11, native PowerShell, native Conda Python 3.11, PyTorch XPU, and Intel Arc. WSL, CUDA wheels, and CPU fallback disguised as XPU execution are unsupported. `--device xpu` fails if XPU is unavailable; CPU is used only when explicitly requested.
+This repository targets Linux (native or WSL2 with NVIDIA driver passthrough), bash, Conda Python 3.11, PyTorch CUDA, and NVIDIA GPUs. CPU fallback disguised as CUDA execution is unsupported. `--device cuda` fails if CUDA is unavailable; CPU is used only when explicitly requested.
 
-Tested development machine: Intel Core Ultra 9 285H, Intel Arc 140T (16 GB shared memory), PyTorch 2.13.0+xpu.
+Requirements: NVIDIA driver with CUDA 12 support (check `nvidia-smi`); BF16 autocast requires an Ampere (RTX 30 series) or newer GPU — on older GPUs use `--precision fp16` or `fp32`.
 
 ## Architecture
 
@@ -39,7 +39,7 @@ The network is a BatchNorm residual tower with a spatial 73-plane policy head, t
 |---|---:|---:|---|
 | smoke | 2 × 32 | no | pipeline only (599,340 parameters) |
 | tiny | 10 × 128 | no | development/ablation |
-| main_xpu | 12 × 192 | hidden 32 | intended formal model (8,932,076 parameters) |
+| main_cuda | 12 × 192 | hidden 32 | intended formal model (8,932,076 parameters) |
 | large | 16 × 256 | hidden 64 | experimental; benchmark first |
 
 PUCT performs selection, expansion, neural evaluation, and alternating-perspective backup. Leaves are reserved and evaluated in configurable batches. Checkmate, stalemate, claimed repetition/fifty-move draws, and insufficient material are terminal before inference.
@@ -47,7 +47,7 @@ PUCT performs selection, expansion, neural evaluation, and alternating-perspecti
 ## Repository layout
 
 ```text
-configs/                 smoke, tiny, main_xpu, large presets
+configs/                 smoke, tiny, main_cuda, large presets
 chess_ai/board/          state planes and 4672 move mapping
 chess_ai/model/          residual tower, SE, policy/WDL heads
 chess_ai/data/           compact versioned shards and loaders
@@ -56,77 +56,79 @@ chess_ai/training/       losses, trainer, checkpoint/resume
 chess_ai/search/         nodes, batched evaluator, PUCT
 chess_ai/evaluation/     neural metrics and match utilities
 chess_ai/uci/            Stockfish-free UCI engine
-scripts/                 reproducible Windows setup and smoke test
-tests/                   CPU correctness and real-XPU smoke coverage
+scripts/                 reproducible Linux setup and smoke test
+tests/                   CPU correctness and real-CUDA smoke coverage
 ```
 
-## Native Windows setup
+## Linux setup
 
-The safe re-runnable setup script creates `chessmodel`, installs torch only from the official XPU index, installs the remaining dependencies, and executes real XPU compute:
+The safe re-runnable setup script creates `chessmodel`, installs torch only from the official CUDA index, installs the remaining dependencies, and executes real CUDA compute:
 
-```powershell
-Set-Location C:\Users\lijs\Desktop\work\chess
-.\scripts\setup_windows.ps1
+```bash
+cd /path/to/chess
+./scripts/setup_linux.sh
 ```
+
+If the target machine needs a different wheel set, adjust the `--index-url` in the script (e.g. a newer `cu12x` index matching the installed driver).
 
 Equivalent manual setup:
 
-```powershell
+```bash
 conda create -n chessmodel python=3.11 -y
 conda activate chessmodel
 python -m pip install --upgrade pip
-python -m pip install torch `
-    --index-url https://download.pytorch.org/whl/xpu
+python -m pip install torch \
+    --index-url https://download.pytorch.org/whl/cu126
 python -m pip install -r requirements.txt
 ```
 
-Torch is deliberately absent from `requirements.txt` to prevent an accidental CPU or CUDA wheel. Verify more than the availability flag:
+Torch is deliberately absent from `requirements.txt` to prevent an accidental CPU wheel. Verify more than the availability flag:
 
-```powershell
-python -c "import torch; print(torch.__version__); print(torch.xpu.is_available()); print(torch.xpu.get_device_name(0) if torch.xpu.is_available() else 'NO XPU')"
-python -m chess_ai.diagnostics --device xpu
+```bash
+python -c "import torch; print(torch.__version__); print(torch.version.cuda); print(torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'NO CUDA')"
+python -m chess_ai.diagnostics --device cuda
 ```
 
-The diagnostic performs an XPU matrix operation and neural forward/backward. It fails loudly if XPU cannot execute.
+The diagnostic performs a CUDA matrix operation and neural forward/backward. It fails loudly if CUDA cannot execute.
 
 ## Stockfish 18
 
-Download only from the [official Stockfish download page](https://stockfishchess.org/download/). The AVX2 Windows build is appropriate for most recent x64 systems. Extract it outside Git or under ignored `tools\stockfish\`; never commit the executable or NNUE files. All teacher commands accept an explicit path and use reproducible node budgets.
+Download only from the [official Stockfish download page](https://stockfishchess.org/download/). The AVX2 Linux build is appropriate for most recent x64 systems. Extract it outside Git or under ignored `tools/stockfish/`; never commit the executable or NNUE files. All teacher commands accept an explicit path and use reproducible node budgets.
 
 Example local path used during development:
 
 ```text
-tools\stockfish\unpacked\stockfish\stockfish-windows-x86-64-avx2.exe
+tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2
 ```
 
 ## Tests and required smoke test
 
-```powershell
+```bash
 conda activate chessmodel
 pytest -q
 ```
 
-Run the complete tiny Stockfish → shard → loader → XPU forward/backward → optimizer → checkpoint/reload → batched PUCT → legal move → UCI path:
+Run the complete tiny Stockfish → shard → loader → CUDA forward/backward → optimizer → checkpoint/reload → batched PUCT → legal move → UCI path:
 
-```powershell
-.\scripts\smoke_test.ps1 `
-    -Stockfish ".\tools\stockfish\unpacked\stockfish\stockfish-windows-x86-64-avx2.exe"
+```bash
+./scripts/smoke_test.sh \
+    tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2
 ```
 
-It labels only 16 random positions at 100 nodes/MultiPV 2, executes five optimizer steps, searches four simulations, and removes `tmp\smoke` in `finally`.
+It labels only 16 random positions at 100 nodes/MultiPV 2, executes five optimizer steps, searches four simulations, and removes `tmp/smoke` in `finally`.
 
 ## Benchmark before choosing batch size
 
 Do not assume BF16, channels-last, or `torch.compile` wins. Establish a short eager BF16 baseline, then vary one dimension:
 
-```powershell
-python benchmark_xpu.py --config configs\main_xpu.yaml --steps 5
-python benchmark_xpu.py --config configs\main_xpu.yaml --batches 128 256 512 --steps 5 --precision fp32
-python benchmark_xpu.py --config configs\main_xpu.yaml --batches 128 256 512 --steps 5 --precision bf16 --layout channels_last
-python benchmark_xpu.py --config configs\main_xpu.yaml --batches 128 256 --steps 5 --precision bf16 --compile
+```bash
+python benchmark_cuda.py --config configs/main_cuda.yaml --steps 5
+python benchmark_cuda.py --config configs/main_cuda.yaml --batches 128 256 512 --steps 5 --precision fp32
+python benchmark_cuda.py --config configs/main_cuda.yaml --batches 128 256 512 --steps 5 --precision bf16 --layout channels_last
+python benchmark_cuda.py --config configs/main_cuda.yaml --batches 128 256 --steps 5 --precision bf16 --compile
 ```
 
-OOM is reported and stops larger batches gracefully. Output includes forward/training positions per second, step latency, dtype, layout, eager/compile mode, parameter count, and approximate allocated XPU memory when exposed by PyTorch.
+OOM is reported and stops larger batches gracefully. Output includes forward/training positions per second, step latency, dtype, layout, eager/compile mode, parameter count, and approximate allocated CUDA memory when exposed by PyTorch.
 
 ## Teacher datasets
 
@@ -138,27 +140,27 @@ run at the same time.
 
 Formal broad randomized generation:
 
-```powershell
-python generate_teacher_data.py `
-    --config configs\main_xpu.yaml `
-    --stockfish "C:\Tools\Stockfish\stockfish-windows-x86-64-avx2.exe" `
-    --output data\teacher_main `
-    --positions 1000000 `
-    --nodes 10000 `
+```bash
+python generate_teacher_data.py \
+    --config configs/main_cuda.yaml \
+    --stockfish tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2 \
+    --output data/teacher_main \
+    --positions 1000000 \
+    --nodes 10000 \
     --multipv 8
 ```
 
 PGN-driven, correlation-thinned sampling (every eighth eligible ply internally):
 
-```powershell
-python generate_teacher_data.py `
-    --config configs\main_xpu.yaml `
-    --stockfish "C:\Tools\Stockfish\stockfish-windows-x86-64-avx2.exe" `
-    --output data\teacher_pgn `
-    --positions 1000000 `
-    --nodes 10000 `
-    --multipv 8 `
-    --pgn datasets\games.pgn
+```bash
+python generate_teacher_data.py \
+    --config configs/main_cuda.yaml \
+    --stockfish tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2 \
+    --output data/teacher_pgn \
+    --positions 1000000 \
+    --nodes 10000 \
+    --multipv 8 \
+    --pgn datasets/games.pgn
 ```
 
 PGNs supply realistic positions and game histories; their game results are not used
@@ -177,27 +179,27 @@ when retaining centipawns.
 
 Run these stages in order. Dataset production is CPU/Stockfish and disk-I/O work;
 model training begins only after both datasets pass verification.
-For copy-ready, single-line PowerShell commands covering generation through human
+For copy-ready, single-line bash commands covering generation through human
 play, use [`INSTRUCTIONS.md`](INSTRUCTIONS.md).
 
 ### 1. Prepare game-level-disjoint PGNs
 
 Download a reasonably sized, high-quality standard-chess PGN into the ignored
-`datasets\source` directory. The preparation script removes parse failures,
+`datasets/source` directory. The preparation script removes parse failures,
 non-standard starting positions, games without a decisive/draw result, short games,
 and duplicate move sequences. It then makes a deterministic game-level 90/10 split
 and refuses to publish outputs unless both sides contain enough sampleable positions:
 
-```powershell
-conda run -n chessmodel python scripts\prepare_formal_pgn.py `
-    --input datasets\source\high_quality_games.pgn `
-    --train-output datasets\formal_train.pgn `
-    --validation-output datasets\formal_validation.pgn `
-    --validation-percent 10 `
-    --seed 7 `
-    --required-train-positions 1000000 `
-    --required-validation-positions 50000 `
-    --metadata-output datasets\formal_pgn_metadata.json
+```bash
+conda run -n chessmodel python scripts/prepare_formal_pgn.py \
+    --input datasets/source/high_quality_games.pgn \
+    --train-output datasets/formal_train.pgn \
+    --validation-output datasets/formal_validation.pgn \
+    --validation-percent 10 \
+    --seed 7 \
+    --required-train-positions 1000000 \
+    --required-validation-positions 50000 \
+    --metadata-output datasets/formal_pgn_metadata.json
 ```
 
 The script writes through temporary files and refuses to overwrite an existing
@@ -208,29 +210,29 @@ PGNs and metadata under `datasets` are intentionally not versioned.
 
 Confirm the Stockfish path, then run:
 
-```powershell
-.\scripts\generate_formal_1m.ps1 `
-    -Stockfish ".\tools\stockfish\unpacked\stockfish\stockfish-windows-x86-64-avx2.exe"
+```bash
+./scripts/generate_formal_1m.sh
 ```
 
 Defaults are 1,000,000 training positions, 50,000 validation positions, 10,000
 Stockfish nodes, MultiPV 8, and 4,096 records per shard. This produces 245 training
-shards under `data\formal_1m_train` and 13 validation shards under
-`data\formal_50k_validation`. The script refuses existing output directories,
+shards under `data/formal_1m_train` and 13 validation shards under
+`data/formal_50k_validation`. The script refuses existing output directories,
 requires distinct train/validation PGNs, and verifies every checksum and the exact
-shard and record totals before reporting success.
+shard and record totals before reporting success. Override any default with an
+environment variable, e.g. `STOCKFISH=path/to/stockfish ./scripts/generate_formal_1m.sh`.
 
 To recheck completed data independently:
 
-```powershell
-conda run -n chessmodel python scripts\verify_teacher_dataset.py `
-    --dataset data\formal_1m_train `
-    --expected-positions 1000000 `
+```bash
+conda run -n chessmodel python scripts/verify_teacher_dataset.py \
+    --dataset data/formal_1m_train \
+    --expected-positions 1000000 \
     --expected-shards 245
 
-conda run -n chessmodel python scripts\verify_teacher_dataset.py `
-    --dataset data\formal_50k_validation `
-    --expected-positions 50000 `
+conda run -n chessmodel python scripts/verify_teacher_dataset.py \
+    --dataset data/formal_50k_validation \
+    --expected-positions 50000 \
     --expected-shards 13
 ```
 
@@ -238,28 +240,28 @@ conda run -n chessmodel python scripts\verify_teacher_dataset.py `
 that compact representation in memory, and decodes only requested samples. The
 million-position dataset therefore avoids expanding all boards into resident
 float32 tensors. Opening shards is disk-I/O-heavy; steady-state forward/backward
-training is primarily XPU-heavy.
+training is primarily GPU-heavy.
 
 ### 3. Benchmark and train
 
 Benchmark first. If batch 512 is unsuitable on the target machine, copy
-`configs\formal_1m.yaml` and change only the tested batch size. Start formal training
+`configs/formal_1m.yaml` and change only the tested batch size. Start formal training
 only after the verification commands above succeed:
 
-```powershell
-python train.py `
-    --config configs\formal_1m.yaml `
-    --dataset data\formal_1m_train `
-    --device xpu `
-    --output checkpoints\formal_1m_latest.pt `
-    --logdir runs\formal_1m
+```bash
+python train.py \
+    --config configs/formal_1m.yaml \
+    --dataset data/formal_1m_train \
+    --device cuda \
+    --output checkpoints/formal_1m_latest.pt \
+    --logdir runs/formal_1m
 ```
 
-Loss is soft-target policy cross entropy plus WDL cross entropy and optional Huber moves-left loss, with configurable weights. AdamW uses warmup plus cosine decay and `1e-4` default weight decay. BF16 XPU autocast is the default main preset.
+Loss is soft-target policy cross entropy plus WDL cross entropy and optional Huber moves-left loss, with configurable weights. AdamW uses warmup plus cosine decay and `1e-4` default weight decay. BF16 CUDA autocast is the default main preset.
 
 Monitor:
 
-```powershell
+```bash
 tensorboard --logdir runs
 ```
 
@@ -267,79 +269,79 @@ tensorboard --logdir runs
 
 Evaluate against the game-disjoint validation set:
 
-```powershell
-python evaluate.py `
-    --checkpoint checkpoints\formal_1m_latest.pt `
-    --dataset data\formal_50k_validation `
-    --device xpu `
+```bash
+python evaluate.py \
+    --checkpoint checkpoints/formal_1m_latest.pt \
+    --dataset data/formal_50k_validation \
+    --device cuda \
     --batch-size 512
 ```
 
 Resume model, optimizer, scheduler, step/epoch, CPU RNG states, config, architecture
 metadata, and recorded Git commit:
 
-```powershell
-python train.py `
-    --config configs\formal_1m.yaml `
-    --dataset data\formal_1m_train `
-    --device xpu `
-    --resume checkpoints\formal_1m_latest.pt `
-    --output checkpoints\formal_1m_latest.pt `
-    --logdir runs\formal_1m
+```bash
+python train.py \
+    --config configs/formal_1m.yaml \
+    --dataset data/formal_1m_train \
+    --device cuda \
+    --resume checkpoints/formal_1m_latest.pt \
+    --output checkpoints/formal_1m_latest.pt \
+    --logdir runs/formal_1m
 ```
 
 ## Validation and engine matches
 
 Neural validation metrics include policy cross entropy/KL, teacher top-1/top-3 agreement, WDL cross entropy/accuracy, and WDL Brier calibration:
 
-```powershell
-python evaluate.py `
-    --checkpoint checkpoints\main_latest.pt `
-    --dataset data\teacher_validation `
-    --device xpu `
+```bash
+python evaluate.py \
+    --checkpoint checkpoints/main_latest.pt \
+    --dataset data/teacher_validation \
+    --device cuda \
     --batch-size 512
 ```
 
 Paired-color model versus Stockfish (formal evaluation; not a smoke command):
 
-```powershell
-python engine_match.py `
-    --checkpoint checkpoints\main_latest.pt `
-    --stockfish "C:\Tools\Stockfish\stockfish-windows-x86-64-avx2.exe" `
-    --device xpu `
-    --games 100 `
-    --simulations 800 `
-    --leaf-batch-size 64 `
-    --stockfish-nodes 10000 `
-    --pgn artifacts\main-vs-sf.pgn
+```bash
+python engine_match.py \
+    --checkpoint checkpoints/main_latest.pt \
+    --stockfish tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2 \
+    --device cuda \
+    --games 100 \
+    --simulations 800 \
+    --leaf-batch-size 64 \
+    --stockfish-nodes 10000 \
+    --pgn artifacts/main-vs-sf.pgn
 ```
 
-For a paired new/previous checkpoint match, replace `--stockfish ... --stockfish-nodes ...` with `--opponent-checkpoint checkpoints\previous.pt`. Reports include W/D/L, score, logistic Elo estimate, average move time, simulations, and PGN. Tiny matches do not justify an Elo claim.
+For a paired new/previous checkpoint match, replace `--stockfish ... --stockfish-nodes ...` with `--opponent-checkpoint checkpoints/previous.pt`. Reports include W/D/L, score, logistic Elo estimate, average move time, simulations, and PGN. Tiny matches do not justify an Elo claim.
 
 ## Hard-example mining and deeper relabeling
 
 Rank disagreement, policy KL, WDL error, entropy, and uncertainty; this writes both audit JSON and a matching FEN list:
 
-```powershell
-python mine_hard_positions.py `
-    --checkpoint checkpoints\main_latest.pt `
-    --dataset data\teacher_candidates `
-    --output hard_positions\ranked.json `
-    --device xpu `
+```bash
+python mine_hard_positions.py \
+    --checkpoint checkpoints/main_latest.pt \
+    --dataset data/teacher_candidates \
+    --output hard_positions/ranked.json \
+    --device cuda \
     --top-k 100000
 ```
 
 Relabel those exact positions more deeply (future formal job):
 
-```powershell
-python generate_teacher_data.py `
-    --config configs\main_xpu.yaml `
-    --stockfish "C:\Tools\Stockfish\stockfish-windows-x86-64-avx2.exe" `
-    --output data\teacher_hard_deep `
-    --positions 100000 `
-    --nodes 100000 `
-    --multipv 12 `
-    --fen-file hard_positions\ranked.fen
+```bash
+python generate_teacher_data.py \
+    --config configs/main_cuda.yaml \
+    --stockfish tools/stockfish/unpacked/stockfish/stockfish-ubuntu-x86-64-avx2 \
+    --output data/teacher_hard_deep \
+    --positions 100000 \
+    --nodes 100000 \
+    --multipv 12 \
+    --fen-file hard_positions/ranked.fen
 ```
 
 Continue distillation by placing compatible broad and hard shards under one dataset directory (or constructing a desired sampled mixture directory) and resume training. Sampling ratios are data/config decisions, not hard-coded.
@@ -348,14 +350,14 @@ Continue distillation by placing compatible broad and hard shards under one data
 
 Self-play stores MCTS visit targets and final game WDL. Run only after supervised policy quality is useful:
 
-```powershell
-python selfplay.py `
-    --checkpoint checkpoints\main_latest.pt `
-    --output selfplay_data\main `
-    --device xpu `
-    --games 10000 `
-    --simulations 800 `
-    --leaf-batch-size 64 `
+```bash
+python selfplay.py \
+    --checkpoint checkpoints/main_latest.pt \
+    --output selfplay_data/main \
+    --device cuda \
+    --games 10000 \
+    --simulations 800 \
+    --leaf-batch-size 64 \
     --temperature 1.0
 ```
 
@@ -365,33 +367,33 @@ Train on a deliberate teacher/self-play mixture by collecting selected shards in
 
 Play as White in the console:
 
-```powershell
-python play.py `
-    --checkpoint checkpoints\main_latest.pt `
-    --device xpu `
-    --simulations 800 `
+```bash
+python play.py \
+    --checkpoint checkpoints/main_latest.pt \
+    --device cuda \
+    --simulations 800 \
     --leaf-batch-size 64
 ```
 
 Run the Stockfish-free UCI process for a GUI:
 
-```powershell
-python -m chess_ai.uci.engine `
-    --checkpoint checkpoints\main_latest.pt `
-    --device xpu `
-    --simulations 800 `
+```bash
+python -m chess_ai.uci.engine \
+    --checkpoint checkpoints/main_latest.pt \
+    --device cuda \
+    --simulations 800 \
     --leaf-batch-size 64
 ```
 
 Serve a local browser game using an explicit checkpoint and TCP port:
 
-```powershell
-python serve.py `
-    --checkpoint checkpoints\formal_tiny_latest.pt `
-    --device xpu `
-    --host 127.0.0.1 `
-    --port 8765 `
-    --simulations 400 `
+```bash
+python serve.py \
+    --checkpoint checkpoints/formal_tiny_latest.pt \
+    --device cuda \
+    --host 127.0.0.1 \
+    --port 8765 \
+    --simulations 400 \
     --leaf-batch-size 64
 ```
 
@@ -401,29 +403,30 @@ Implemented commands are `uci`, `isready`, `ucinewgame`, `position startpos|fen 
 
 ## Profiling
 
-Teacher generation prints labeling throughput. Trainer step records CPU→XPU transfer, forward, backward, and optimizer time. `NeuralEvaluator.timings` records batched leaf inference calls/positions/time; `SearchResult.elapsed_s` covers tree plus inference. The XPU benchmark separates forward and full training throughput. These lightweight timings identify whether labeling, shard loading/unpacking, transfers, model kernels, or tree logic is the next bottleneck.
+Teacher generation prints labeling throughput. Trainer step records CPU→GPU transfer, forward, backward, and optimizer time. `NeuralEvaluator.timings` records batched leaf inference calls/positions/time; `SearchResult.elapsed_s` covers tree plus inference. The CUDA benchmark separates forward and full training throughput. These lightweight timings identify whether labeling, shard loading/unpacking, transfers, model kernels, or tree logic is the next bottleneck.
 
 ## Git workflow and artifacts
 
 Use small reviewed commits and preserve reproducibility:
 
-```powershell
+```bash
 git status
 git add chess_ai tests configs README.md
 git commit -m "feat: describe the verified change"
-git push origin main
+git push origin linux-cuda
 ```
 
 Datasets, PGNs, Stockfish binaries, checkpoints, runs, logs, artifacts, executables, credentials, and temporary smoke files are ignored. Inspect `git status` and tracked file sizes before every push.
 
 ## Troubleshooting
 
-- `XPU was explicitly requested...`: confirm `torch.__version__` ends in `+xpu`; reinstall torch from the XPU index, then run diagnostics. Never mask this with CPU fallback.
-- Conda channel Terms of Service: accept the prompted official channel terms, then rerun `scripts\setup_windows.ps1`.
-- XPU OOM: benchmark lower batches first; compare BF16 and layouts; do not assume compile helps.
-- BF16 kernel error: reproduce with `--precision fp32` in the benchmark. Keep formal training stopped until the failing XPU path is understood.
-- Stockfish not found: pass a quoted absolute `.exe` path; do not hard-code it into source or commit it.
-- Slow first command: native XPU/oneAPI initialization in a fresh Windows Python process can dominate tiny jobs.
+- `CUDA was explicitly requested...`: confirm `torch.version.cuda` is set and `torch.cuda.is_available()` is true; reinstall torch from the CUDA index, then run diagnostics. Never mask this with CPU fallback.
+- CUDA unavailable in WSL2: install the NVIDIA Windows driver with WSL support; verify with `nvidia-smi` inside WSL2.
+- Conda channel Terms of Service: accept the prompted official channel terms, then rerun `scripts/setup_linux.sh`.
+- CUDA OOM: benchmark lower batches first; compare BF16 and layouts; do not assume compile helps.
+- BF16 kernel error: reproduce with `--precision fp32` in the benchmark. Keep formal training stopped until the failing CUDA path is understood. BF16 requires an Ampere (RTX 30 series) or newer GPU; use fp16/fp32 on older GPUs.
+- Stockfish not found: pass a quoted absolute path; do not hard-code it into source or commit it.
+- Slow first command: native CUDA/driver initialization in a fresh Python process can dominate tiny jobs.
 - UCI GUI appears idle: ensure the GUI launches the Python module with the same Conda environment and uses an existing compatible checkpoint.
 - Shard integrity/version error: do not bypass it; regenerate or migrate the shard explicitly.
 
