@@ -10,7 +10,7 @@ Stockfish teacher → broad distillation → compact policy/WDL network
 → continued distillation → selective self-play → paired evaluation
 ```
 
-No pretrained strong model or dataset is included. Smoke checkpoints are disposable and have no expected chess strength.
+This repository does not bundle large artifacts. The formal checkpoint and the one-million-position teacher dataset are published on Hugging Face — see [Published artifacts](#published-artifacts). Smoke checkpoints are disposable and have no expected chess strength.
 
 ## Platform
 
@@ -58,6 +58,24 @@ chess_ai/evaluation/     neural metrics and match utilities
 chess_ai/uci/            Stockfish-free UCI engine
 scripts/                 reproducible Windows setup and smoke test
 tests/                   CPU correctness and real-XPU smoke coverage
+```
+
+## Published artifacts
+
+Large binaries (datasets, PGNs, checkpoints, runs) are intentionally not tracked by
+git. The formal training artifacts are published on Hugging Face:
+
+| Artifact | Hugging Face repo | Contents |
+|---|---|---|
+| Formal checkpoint | [jinshuoli/chessmodel](https://huggingface.co/jinshuoli/chessmodel) | `checkpoints/formal_1m_latest.pt` — the `main_xpu` preset, 8,932,076 parameters |
+| Teacher dataset | [jinshuoli/chessmodel-data](https://huggingface.co/datasets/jinshuoli/chessmodel-data) | 245 training shards (`data/formal_1m_train`) + 13 validation shards (`data/formal_50k_validation`), source PGNs (`datasets/formal_train.pgn`, `datasets/formal_validation.pgn`), and `datasets/formal_pgn_metadata.json`; ~370 MB |
+
+Download both into a clone so the workflow commands resolve unchanged (the paths
+mirror the repository layout):
+
+```bash
+hf download jinshuoli/chessmodel checkpoints/formal_1m_latest.pt --local-dir .
+hf download jinshuoli/chessmodel-data --repo-type dataset --local-dir .
 ```
 
 ## Native Windows setup
@@ -202,7 +220,7 @@ conda run -n chessmodel python scripts\prepare_formal_pgn.py `
 
 The script writes through temporary files and refuses to overwrite an existing
 split. Preserve the generated metadata JSON and source hash locally for provenance.
-PGNs and metadata under `datasets` are intentionally not versioned.
+PGNs and metadata under `datasets` are intentionally not versioned in git; the generated split is published on Hugging Face — see [Published artifacts](#published-artifacts).
 
 ### 2. Generate and verify Stockfish labels
 
@@ -414,7 +432,7 @@ git commit -m "feat: describe the verified change"
 git push origin main
 ```
 
-Datasets, PGNs, Stockfish binaries, checkpoints, runs, logs, artifacts, executables, credentials, and temporary smoke files are ignored. Inspect `git status` and tracked file sizes before every push.
+Datasets, PGNs, Stockfish binaries, checkpoints, runs, logs, artifacts, executables, credentials, and temporary smoke files are ignored. The formal checkpoint and teacher dataset are published on Hugging Face instead — see [Published artifacts](#published-artifacts). Inspect `git status` and tracked file sizes before every push.
 
 ## Troubleshooting
 
